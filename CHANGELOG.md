@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.1](https://github.com/michealch/apt2distroless/compare/v0.1.0...v0.1.1) (2026-06-03)
+
+
+### Features
+
+* **docs:** lead the README with the problem and a runnable example ([#3](https://github.com/michealch/apt2distroless/issues/3)) ([234c26c](https://github.com/michealch/apt2distroless/commit/234c26ccf832b8bc958fec3fae6fdf343d8ff7d0))
+
+## Changelog
+
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
