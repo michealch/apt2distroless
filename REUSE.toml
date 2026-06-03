@@ -1,0 +1,27 @@
+version = 1
+
+# Licensing for files that can't carry an inline SPDX header (JSON, lockfiles,
+# generated data, test fixtures) or where a header would be noise (docs).
+# Everything else carries an SPDX header in the file itself.
+
+[[annotations]]
+path = "test/fixtures/**"
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Micheal Choudhary <mc@miche.al>"
+SPDX-License-Identifier = "MIT"
+
+[[annotations]]
+path = [
+  "LICENSE",
+  "REUSE.toml",
+  "go.mod",
+  "go.sum",
+  "cliff.toml",
+  ".gitignore",
+  ".dockerignore",
+  "**.json",
+  "**.md",
+]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Micheal Choudhary <mc@miche.al>"
+SPDX-License-Identifier = "MIT"

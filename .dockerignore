@@ -1,0 +1,34 @@
+# Build outputs
+bin/
+*.tar.gz
+
+# Sentinel file created by Makefile
+.docker-build
+
+# Git metadata (not needed in the build context)
+.git/
+.gitignore
+
+# Editor and OS noise
+.DS_Store
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Test artifacts
+/tmp/
+
+# Docs (not needed in the image)
+*.md
+docs/
+Plan.md
+IMPLEMENTATION.md
+CHANGELOG.md
+RELEASE_NOTES.md
+
+# CI / release tooling files (not needed inside the container)
+release-please-config.json
+.release-please-manifest.json
+cliff.toml
+.commitlintrc.json

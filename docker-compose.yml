@@ -1,0 +1,34 @@
+# SPDX-FileCopyrightText: 2026 Micheal Choudhary <mc@miche.al>
+# SPDX-License-Identifier: MIT
+
+services:
+  dev:
+    build:
+      context: .
+      target: dev
+      args:
+        GO_VERSION: "1.25.3"
+        LINT_VERSION: "v1.64.8"
+    volumes:
+      # Bind-mount the repo so edits on the host are immediately visible inside.
+      - .:/src
+      # Named volume for the Go module cache — survives container restarts.
+      # Docker initialises this from the image's /go/pkg/mod on first use.
+      - gomod-cache:/go/pkg/mod
+    working_dir: /src
+    # Mirror host UID/GID so bind-mounted files aren't owned by root on the host.
+    # Override by setting UID/GID env vars before running make.
+    user: "${UID:-1000}:${GID:-1000}"
+    environment:
+      - GOPATH=/go
+      - GOMODCACHE=/go/pkg/mod
+      # Use an in-container temp dir for the build cache; avoids named-volume
+      # permission issues with non-root UIDs on Docker Desktop.
+      - GOCACHE=/tmp/go-build
+      - CGO_ENABLED=0
+    # Keep stdin open so `make shell` / `docker compose run dev bash` works.
+    stdin_open: true
+    tty: true
+
+volumes:
+  gomod-cache:

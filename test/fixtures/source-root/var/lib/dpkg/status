@@ -1,0 +1,67 @@
+Package: pkga
+Status: install ok installed
+Version: 1.0-1
+Architecture: amd64
+Maintainer: Test <test@example.com>
+Depends: pkgb
+Description: package A
+ Root test package.
+
+Package: pkgb
+Status: install ok installed
+Version: 2.0-1
+Architecture: all
+Maintainer: Test <test@example.com>
+Description: package B (arch-independent)
+ Dependency of pkgA.
+
+Package: pkgc
+Status: install ok installed
+Version: 3.0-1
+Architecture: amd64
+Maintainer: Test <test@example.com>
+Description: package C
+ Blacklisted package (maps to bash in tests).
+
+Package: pkgd
+Status: install ok installed
+Version: 4.0-1
+Architecture: amd64
+Maintainer: Test <test@example.com>
+Description: package D
+ Has same-content file (usr/lib/pkgd.so) as pkgA for dedup testing.
+
+Package: pkge
+Status: install ok installed
+Version: 5.0-1
+Architecture: amd64
+Maintainer: Test <test@example.com>
+Recommends: pkgf
+Suggests: pkgg
+Description: package E
+ Has a Recommends (pkgf) and a Suggests (pkgg) for include-* flag tests.
+
+Package: pkgf
+Status: install ok installed
+Version: 6.0-1
+Architecture: amd64
+Maintainer: Test <test@example.com>
+Description: package F
+ Recommended by pkgE.
+
+Package: pkgg
+Status: install ok installed
+Version: 7.0-1
+Architecture: amd64
+Maintainer: Test <test@example.com>
+Description: package G
+ Suggested by pkgE.
+
+Package: pkgh
+Status: install ok installed
+Version: 8.0-1
+Architecture: arm64
+Maintainer: Test <test@example.com>
+Description: package H
+ arm64-only package for --arch filtering tests.
+

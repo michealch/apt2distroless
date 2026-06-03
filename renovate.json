@@ -1,0 +1,46 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":semanticCommits"
+  ],
+  "labels": ["dependencies"],
+  "semanticCommitScope": "deps",
+  "packageRules": [
+    {
+      "description": "GitHub Actions updates: ci commit type, grouped into one PR",
+      "matchManagers": ["github-actions"],
+      "semanticCommitType": "ci",
+      "groupName": "github-actions"
+    },
+    {
+      "description": "Dockerfile base images + pinned Go/golangci-lint: build commit type",
+      "matchFileNames": ["Dockerfile"],
+      "semanticCommitType": "build"
+    },
+    {
+      "description": "Group low-risk Go module updates into a single PR",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "go modules (non-major)"
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "Track the pinned Go toolchain (ARG GO_VERSION) in the Dockerfile",
+      "fileMatch": ["(^|/)Dockerfile$"],
+      "matchStrings": ["ARG GO_VERSION=(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
+      "datasourceTemplate": "golang-version",
+      "depNameTemplate": "golang"
+    },
+    {
+      "customType": "regex",
+      "description": "Track the pinned golangci-lint (ARG LINT_VERSION) in the Dockerfile",
+      "fileMatch": ["(^|/)Dockerfile$"],
+      "matchStrings": ["ARG LINT_VERSION=(?<currentValue>v\\d+\\.\\d+\\.\\d+)"],
+      "datasourceTemplate": "github-releases",
+      "depNameTemplate": "golangci/golangci-lint"
+    }
+  ]
+}

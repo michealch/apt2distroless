@@ -1,0 +1,80 @@
+# git-cliff configuration
+# https://git-cliff.org/docs/configuration
+
+[changelog]
+# Header written once at the top of CHANGELOG.md.
+header = """
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+"""
+
+# Per-release body template (Tera / Jinja2 syntax).
+body = """
+{% if version %}\
+## [{{ version | trim_start_matches(pat="v") }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{% else %}\
+## [Unreleased]
+{% endif %}\
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | upper_first }}
+{% for commit in commits %}
+- {% if commit.breaking %}**BREAKING CHANGE** {% endif %}\
+{{ commit.message | upper_first }} \
+([`{{ commit.id | truncate(length=7, end="") }}`](https://github.com/michealch/apt2distroless/commit/{{ commit.id }}))\
+{% if commit.remote.username %} by @{{ commit.remote.username }}{% endif %}
+{% endfor %}
+{% endfor %}\n
+"""
+
+# Trim leading/trailing whitespace in the template output.
+trim = true
+
+# Footer appended at the very end of the file.
+footer = ""
+
+[git]
+# Only process commits following the Conventional Commits spec.
+conventional_commits = true
+filter_unconventional = false
+split_commits = false
+
+# Parse commit message into structured fields.
+commit_parsers = [
+  { message = "^feat",                    group = "Features" },
+  { message = "^fix",                     group = "Bug Fixes" },
+  { message = "^perf",                    group = "Performance" },
+  { message = "^refactor",                group = "Refactoring" },
+  { message = "^docs",                    group = "Documentation" },
+  { message = "^test",                    group = "Testing" },
+  { message = "^build",                   group = "Build System" },
+  { message = "^ci",                      skip = true },
+  { message = "^chore\\(release\\)",      skip = true },
+  { message = "^chore",                   skip = true },
+  { message = "^style",                   skip = true },
+  { message = "^Merge",                   skip = true },
+]
+
+# Protect against accidentally tagging a dirty commit.
+filter_commits = false
+
+# Sort commits within each group newest-first.
+sort_commits = "newest"
+
+# Tag pattern — matches v1.2.3, v0.1.0-alpha.1, etc.
+tag_pattern = "v[0-9].*"
+
+# Skip tags matching these patterns when generating the changelog.
+skip_tags = "v0\\.0\\.1"
+
+# Ignore commits from these authors (bots).
+ignore_tags = ""
+
+# Do not include the commits in the range before this tag.
+# Useful for projects that didn't use conventional commits from the start.
+# Leave empty to include all history.
+topo_order = false

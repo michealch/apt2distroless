@@ -1,0 +1,212 @@
+# SPDX-FileCopyrightText: 2026 Micheal Choudhary <mc@miche.al>
+# SPDX-License-Identifier: MIT
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel in-progress runs for the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Least-privilege default for every job. The commitlint job widens this.
+permissions:
+  contents: read
+
+jobs:
+  # ── Lint commit messages on PRs ──────────────────────────────────────────
+  commitlint:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    # wagoid/commitlint-github-action lists the PR's commits through the GitHub
+    # API, which needs pull-requests:read. Without it the call fails with
+    # "Resource not accessible by integration".
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check conventional commit format
+        uses: wagoid/commitlint-github-action@v6
+        with:
+          configFile: .commitlintrc.json
+
+  # ── REUSE / SPDX license-compliance check ────────────────────────────────
+  reuse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: REUSE compliance lint
+        uses: fsfe/reuse-action@v6
+
+  # ── Build the dev image (cached) ─────────────────────────────────────────
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Cache Docker layers
+        uses: actions/cache@v5
+        with:
+          path: /tmp/.buildx-cache
+          key: buildx-dev-${{ hashFiles('Dockerfile', 'go.mod', 'go.sum') }}
+          restore-keys: buildx-dev-
+
+      - name: Build dev image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: dev
+          load: true
+          tags: apt2distroless-dev:ci
+          cache-from: type=local,src=/tmp/.buildx-cache
+          cache-to: type=local,dest=/tmp/.buildx-cache-new,mode=max
+
+      # Prevent cache from growing unboundedly.
+      - name: Rotate cache
+        run: |
+          rm -rf /tmp/.buildx-cache
+          mv /tmp/.buildx-cache-new /tmp/.buildx-cache
+
+      - name: Save dev image
+        run: docker save apt2distroless-dev:ci | gzip > /tmp/dev-image.tar.gz
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: dev-image
+          path: /tmp/dev-image.tar.gz
+          retention-days: 1
+
+  # ── Run all checks inside the dev container ───────────────────────────────
+  test:
+    needs: docker-build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: dev-image
+          path: /tmp
+
+      - name: Load dev image
+        run: docker load < /tmp/dev-image.tar.gz
+
+      - name: go vet
+        run: |
+          docker run --rm \
+            -v "$PWD:/src" -w /src \
+            -e GOCACHE=/tmp/go-cache \
+            apt2distroless-dev:ci \
+            go vet ./...
+
+      - name: Unit + integration tests
+        run: |
+          docker run --rm \
+            -v "$PWD:/src" -w /src \
+            -e GOCACHE=/tmp/go-cache \
+            apt2distroless-dev:ci \
+            go test ./...
+
+      - name: Reproducibility check
+        run: |
+          docker run --rm \
+            -v "$PWD:/src" -w /src \
+            -e GOCACHE=/tmp/go-cache \
+            apt2distroless-dev:ci \
+            go test -run TestReproducibility ./test/integration/... -v
+
+      # Tier-2: validates the real apt-cache / dpkg -L seams. Runs as root
+      # (default docker user) so apt-get install works; needs network.
+      - name: E2E smoke test (real apt/dpkg)
+        run: |
+          docker run --rm \
+            -v "$PWD:/src" -w /src \
+            -e GOCACHE=/tmp/go-cache \
+            apt2distroless-dev:ci \
+            go test -tags e2e -count=1 ./test/e2e/...
+
+      - name: golangci-lint
+        run: |
+          docker run --rm \
+            -v "$PWD:/src" -w /src \
+            -e GOCACHE=/tmp/go-cache \
+            apt2distroless-dev:ci \
+            golangci-lint run ./...
+
+      # Keep the dependency set permissive-only so the bundled-notices set stays
+      # small and the image's compound license claim stays accurate. Fails on any
+      # copyleft / unknown dependency license.
+      - name: License policy (go-licenses)
+        run: |
+          docker run --rm \
+            -v "$PWD:/src" -w /src \
+            -e GOCACHE=/tmp/go-cache -e GOFLAGS=-buildvcs=false \
+            apt2distroless-dev:ci \
+            go-licenses check ./cmd/apt2distroless \
+              --allowed_licenses=MIT,Apache-2.0,BSD-3-Clause,BSD-2-Clause,ISC
+
+  # ── Verify the release image builds cleanly ───────────────────────────────
+  release-image-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: docker/setup-buildx-action@v4
+
+      - name: Build release image (no push)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: release
+          push: false
+          build-args: |
+            VERSION=ci
+            COMMIT=${{ github.sha }}
+
+  # ── Cross-compile for every supported arch ───────────────────────────────
+  cross-compile:
+    needs: docker-build
+    runs-on: ubuntu-latest
+    strategy:
+      # Don't cancel the other arches' jobs when one fails — report them all.
+      fail-fast: false
+      matrix:
+        include:
+          - goarch: amd64
+          - goarch: arm64
+          - goarch: "386"      # x86 (32-bit)
+          - goarch: arm        # ARM 32-bit
+            goarm: "7"         # ARMv7
+          - goarch: s390x
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: dev-image
+          path: /tmp
+
+      - name: Load dev image
+        run: docker load < /tmp/dev-image.tar.gz
+
+      - name: Cross-compile linux/${{ matrix.goarch }}${{ matrix.goarm && format('v{0}', matrix.goarm) || '' }}
+        run: |
+          docker run --rm \
+            -v "$PWD:/src" -w /src \
+            -e GOARCH=${{ matrix.goarch }} \
+            -e GOARM=${{ matrix.goarm }} \
+            -e GOOS=linux \
+            -e GOCACHE=/tmp/go-cache \
+            apt2distroless-dev:ci \
+            go build -buildvcs=false ./cmd/apt2distroless
