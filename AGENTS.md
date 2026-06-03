@@ -15,6 +15,8 @@ distroless container image rootfs.
 - **Module:** `github.com/michealch/apt2distroless`
 - **Entry point:** `cmd/apt2distroless/main.go`
 - **No cgo. No C dependencies.**
+- **License:** MIT — the repo is [REUSE](https://reuse.software)-compliant (every
+  file carries an SPDX header; `reuse lint` is a CI gate).
 
 ---
 
@@ -170,12 +172,35 @@ refactor: extract xattr copy into reproducible package
 
 ### Code style
 
-- Standard `gofmt` formatting — the linter (`golangci-lint`) enforces this.
+- Standard `gofmt` formatting — run `gofmt -w` before committing (golangci-lint's
+  default linters don't include a formatter, so it won't catch drift).
 - No `init()` functions.
 - Errors are always propagated up; no `log.Fatal` inside packages.
 - All public functions have a one-line doc comment.
 - Tests use table-driven style (`[]struct{ name, input, want }`) where there are
   multiple cases.
+
+### Licensing & SPDX headers (enforced by CI)
+
+The repo is [REUSE](https://reuse.software)-compliant; the `reuse` CI job fails if
+any file lacks license info. When you add a file:
+
+- **Hand-written source** (`.go`, `Dockerfile`, `Makefile`, `*.yml`, …) gets this
+  two-line header at the very top — for `.go`, above `package` and above any
+  `//go:build` constraint (separated by a blank line):
+
+  ```
+  // SPDX-FileCopyrightText: 2026 Micheal Choudhary <mc@miche.al>
+  // SPDX-License-Identifier: MIT
+  ```
+
+- **Files that can't carry a comment** (JSON, `go.mod`/`go.sum`, docs, test
+  fixtures) are covered by a glob in `REUSE.toml` — extend that, don't touch the file.
+
+New dependencies must stay **permissive**: the `go-licenses check` CI gate rejects
+any license outside `MIT, Apache-2.0, BSD-3-Clause, BSD-2-Clause, ISC`, and their
+notices are bundled into the image. Dependency bumps are automated by **Renovate**
+(`renovate.json`) — don't hand-bump versions.
 
 ### Reproducibility rules (do not violate)
 
@@ -242,7 +267,7 @@ refactor: extract xattr copy into reproducible package
 
 | Workflow | Trigger | What it checks |
 |---|---|---|
-| `ci.yml` | Push / PR to `main` | Docker build, vet, tests, reproducibility, **e2e**, lint, cross-compile (amd64, arm64, 386, armv7, s390x) |
+| `ci.yml` | Push / PR to `main` | Docker build, vet, tests, reproducibility, **e2e**, lint, **REUSE lint**, **license policy (`go-licenses`)**, cross-compile (amd64, arm64, 386, armv7, s390x) |
 | `release-please.yml` | Push to `main` | Opens / updates the Release PR; on merge (when `release_created`) cuts the release: git-cliff notes, **GHCR (+ Docker Hub if configured)** image push, binary release |
 
 > The release jobs run in `release-please.yml` (gated on its `release_created`
@@ -276,10 +301,6 @@ image), and `release-please.yml`'s `licenses` job attaches `THIRD_PARTY_LICENSES
 to each GitHub Release. The image label is `MIT AND Apache-2.0 AND BSD-3-Clause`.
 `ci.yml` runs `go-licenses check` (allow-list MIT/Apache-2.0/BSD-3-Clause/
 BSD-2-Clause/ISC) so a copyleft/unknown dependency fails CI.
-
-> **Known issue:** the `golangci-lint` step is currently red because the pinned
-> `golangci-lint` (built with go1.24) predates the module's `go 1.25.0` target.
-> `make vet` is clean; the lint pin needs bumping (tracked separately).
 
 ---
 
