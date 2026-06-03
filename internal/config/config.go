@@ -6,6 +6,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -116,13 +117,7 @@ func union(a, b []string) []string {
 	return out
 }
 
-func sortStrings(ss []string) {
-	for i := 1; i < len(ss); i++ {
-		for j := i; j > 0 && ss[j] < ss[j-1]; j-- {
-			ss[j], ss[j-1] = ss[j-1], ss[j]
-		}
-	}
-}
+func sortStrings(ss []string) { sort.Strings(ss) }
 
 // sourceEpoch reads SOURCE_DATE_EPOCH from the environment.
 func sourceEpoch(envVal string, flag int64) int64 {

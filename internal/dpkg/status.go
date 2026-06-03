@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -143,10 +144,4 @@ func (ix *Index) All() []*Package {
 	return out
 }
 
-func sortStr(ss []string) {
-	for i := 1; i < len(ss); i++ {
-		for j := i; j > 0 && ss[j] < ss[j-1]; j-- {
-			ss[j], ss[j-1] = ss[j-1], ss[j]
-		}
-	}
-}
+func sortStr(ss []string) { sort.Strings(ss) }
