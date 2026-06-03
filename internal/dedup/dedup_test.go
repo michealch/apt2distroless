@@ -102,6 +102,31 @@ func TestDedupWinnerIsLexicallyFirst(t *testing.T) {
 	}
 }
 
+// TestDedupTrustsPrecomputedSHA256 verifies dedup groups by the copier-provided
+// Entry.SHA256 and does NOT re-read the files: two files with *different* content
+// but the same precomputed digest must be hardlinked.
+func TestDedupTrustsPrecomputedSHA256(t *testing.T) {
+	dir := t.TempDir()
+	pa := writeFile(t, dir, "a.bin", "AAAAA", 0o644)
+	pb := writeFile(t, dir, "b.bin", "BBBBB", 0o644) // different bytes, same size
+
+	entries := []dpkg.Entry{
+		{Dst: pa, Kind: dpkg.KindRegular, Mode: 0o644, Size: 5, SHA256: "precomputed-digest"},
+		{Dst: pb, Kind: dpkg.KindRegular, Mode: 0o644, Size: 5, SHA256: "precomputed-digest"},
+	}
+	d := &Deduper{Strategy: "hardlink", Jobs: 1}
+	linked, _, err := d.Run(entries)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if linked != 1 {
+		t.Errorf("linked = %d, want 1 — dedup must group by precomputed SHA256 without re-reading", linked)
+	}
+	if !sameInode(t, pa, pb) {
+		t.Error("expected hardlink via the precomputed digest")
+	}
+}
+
 func TestDedupStrategyNone(t *testing.T) {
 	dir := t.TempDir()
 	pa := writeFile(t, dir, "a.txt", "dup", 0o644)

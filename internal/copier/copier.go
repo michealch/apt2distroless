@@ -4,6 +4,8 @@
 package copier
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
@@ -16,6 +18,10 @@ import (
 	"github.com/michealch/apt2distroless/internal/reproducible"
 	"golang.org/x/sys/unix"
 )
+
+// bufPool supplies reusable 512 KiB copy buffers shared across copy workers,
+// reducing read/write syscalls on large files versus io.Copy's 32 KiB default.
+var bufPool = sync.Pool{New: func() any { b := make([]byte, 512<<10); return &b }}
 
 // PackageResult holds the outcome of copying one package.
 type PackageResult struct {
@@ -200,9 +206,23 @@ func (c *Copier) copyRegular(rel, src, dst string, fi os.FileInfo) (dpkg.Entry, 
 	if err != nil {
 		return dpkg.Entry{}, fmt.Errorf("create %s: %w", dst, err)
 	}
-	if _, err := io.Copy(df, sf); err != nil {
+	// When dedup will run later, hash the content while copying so dedup never
+	// has to re-read the file. Otherwise copy in-kernel via copy_file_range
+	// (faster, and reflinks on copy-on-write filesystems).
+	var sha string
+	if c.Deduplicate {
+		h := sha256.New()
+		buf := bufPool.Get().(*[]byte)
+		_, cerr := io.CopyBuffer(io.MultiWriter(df, h), sf, *buf)
+		bufPool.Put(buf)
+		if cerr != nil {
+			_ = df.Close()
+			return dpkg.Entry{}, fmt.Errorf("copy %s → %s: %w", src, dst, cerr)
+		}
+		sha = hex.EncodeToString(h.Sum(nil))
+	} else if cerr := copyContent(df, sf, fi.Size()); cerr != nil {
 		_ = df.Close()
-		return dpkg.Entry{}, fmt.Errorf("copy %s → %s: %w", src, dst, err)
+		return dpkg.Entry{}, fmt.Errorf("copy %s → %s: %w", src, dst, cerr)
 	}
 	if err := df.Close(); err != nil {
 		return dpkg.Entry{}, fmt.Errorf("close %s: %w", dst, err)
@@ -247,7 +267,45 @@ func (c *Copier) copyRegular(rel, src, dst string, fi os.FileInfo) (dpkg.Entry, 
 		Gid:     gid,
 		Size:    fi.Size(),
 		XattrFP: fp,
+		SHA256:  sha, // empty when dedup is disabled (no hash computed)
 	}, nil
+}
+
+// copyContent copies sf→df with copy_file_range (in-kernel, reflink-capable),
+// falling back to a buffered userspace copy when the syscall is unsupported or
+// the files live on different filesystems. Used only when dedup is disabled —
+// the dedup path hashes while copying instead.
+func copyContent(df, sf *os.File, size int64) error {
+	remaining := size
+	for remaining > 0 {
+		chunk := remaining
+		if chunk > 1<<30 { // cap so the int length arg can't overflow on 32-bit
+			chunk = 1 << 30
+		}
+		n, err := unix.CopyFileRange(int(sf.Fd()), nil, int(df.Fd()), nil, int(chunk), 0)
+		switch err {
+		case nil:
+			// ok
+		case unix.EINTR:
+			continue
+		case unix.ENOSYS, unix.EXDEV, unix.EINVAL, unix.EOPNOTSUPP, unix.EPERM, unix.EBADF:
+			return bufferedCopy(df, sf) // resumes from the current file offsets
+		default:
+			return err
+		}
+		if n == 0 {
+			break // EOF
+		}
+		remaining -= int64(n)
+	}
+	return nil
+}
+
+func bufferedCopy(df, sf *os.File) error {
+	buf := bufPool.Get().(*[]byte)
+	defer bufPool.Put(buf)
+	_, err := io.CopyBuffer(df, sf, *buf)
+	return err
 }
 
 func (c *Copier) copySymlink(rel, src, dst string, fi os.FileInfo) (dpkg.Entry, error) {
