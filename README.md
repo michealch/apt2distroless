@@ -1,6 +1,32 @@
 # apt2distroless
 
-Extract a Debian/Ubuntu package and its full transitive runtime dependency closure from a host or mounted filesystem into a target directory suitable for use as a **distroless container image rootfs**.
+**The problem:** a binary's real runtime dependencies are hard to find out manually — it dynamically links shared libraries that pull in *more* libraries, the dependencies and dependencies changes over time as packages are updated, and the source of truth is scattered across dpkg's `status` database and per-package file lists.
+
+**apt2distroless solves this:** it finds a Debian/Ubuntu package's complete transitive **runtime dependency closure** from the dpkg metadata (on a host or mounted filesystem) and copies exactly those files into a target directory — ready to use as a **distroless container image rootfs**, with no shells or package managers.
+
+**See it in action** — a distroless `curl` image built entirely from apt:
+
+```dockerfile
+# 1. the tool: FROM scratch, just the static binary
+FROM michealchoudhary/apt2distroless:latest AS tool
+
+# 2. a normal Debian builder — install the package, then extract its runtime closure
+FROM debian:13-slim AS builder
+COPY --from=tool / /
+RUN apt-get update && apt-get install -y --no-install-recommends curl
+RUN /usr/local/bin/apt2distroless --source-root / curl /export
+
+# 3. the final image — ship only the closure on a matching distroless base
+FROM gcr.io/distroless/base-debian13:nonroot
+COPY --from=builder /export /
+ENTRYPOINT ["curl"]
+```
+
+```bash
+docker build -t my-distroless-curl . && docker run --rm my-distroless-curl --version
+```
+
+→ Full walkthrough — the ABI-match rule, excludes, and in-image SBOMs — in [**Quick start**](#quick-start).
 
 > **Host requirements:** Docker + GNU make only. No Go toolchain, no apt/dpkg, nothing else.
 
