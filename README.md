@@ -7,18 +7,28 @@
 **See it in action** — a distroless `curl` image built entirely from apt:
 
 ```dockerfile
+ENV EXPORT_DIR=/export
 # 1. the tool: FROM scratch, just the static binary
-FROM michealchoudhary/apt2distroless:latest AS tool
+FROM ghcr.io/michealch/apt2distroless:latest AS tool
 
 # 2. a normal Debian builder — install the package, then extract its runtime closure
 FROM debian:13-slim AS builder
+ENV EXPORT_DIR
+# Copy the apt2distroless binary into the builder stage (it needs apt/dpkg to run).
 COPY --from=tool / /
+# Install the curl package (and its dependencies) via apt, which populates the dpkg DB and file lists.
 RUN apt-get update && apt-get install -y --no-install-recommends curl
-RUN /usr/local/bin/apt2distroless --source-root / curl /export
+# Run apt2distroless to copy the runtime closure of curl (and its dependencies) into ${EXPORT_DIR}.
+RUN /usr/local/bin/apt2distroless --source-root / curl ${EXPORT_DIR}
 
 # 3. the final image — ship only the closure on a matching distroless base
 FROM gcr.io/distroless/base-debian13:nonroot
-COPY --from=builder /export /
+ENV EXPORT_DIR
+# Copy the exported closure from the builder stage into the final image. This will preserve the symbolic links
+COPY --from=builder ${EXPORT_DIR} /
+# Switch to nonroot user (distroless base images have a nonroot user with UID 65532)
+USER nonroot:nonroot
+# Set the entrypoint to curl (the main package we exported)
 ENTRYPOINT ["curl"]
 ```
 
