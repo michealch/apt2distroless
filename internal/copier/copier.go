@@ -33,24 +33,26 @@ type PackageResult struct {
 
 // Copier copies packages from a source root into a target directory.
 type Copier struct {
-	SourceRoot string
-	Target     string
-	Epoch      int64
-	Exclude    exclude.Matcher
-	Jobs       int
-	IsRoot     bool // os.Geteuid() == 0
+	SourceRoot  string
+	Target      string
+	Epoch       int64
+	Exclude     exclude.Matcher
+	Jobs        int
+	IsRoot      bool // os.Geteuid() == 0
+	Deduplicate bool // whether dedup will run later (controls xattr fingerprint)
 }
 
 // New creates a Copier and emits a one-time warning if not running as root.
-func New(sourceRoot, target string, epoch int64, excl exclude.Matcher, jobs int) *Copier {
+func New(sourceRoot, target string, epoch int64, excl exclude.Matcher, jobs int, dedup bool) *Copier {
 	isRoot := os.Geteuid() == 0
 	return &Copier{
-		SourceRoot: strings.TrimRight(sourceRoot, "/"),
-		Target:     strings.TrimRight(target, "/"),
-		Epoch:      epoch,
-		Exclude:    excl,
-		Jobs:       jobs,
-		IsRoot:     isRoot,
+		SourceRoot:  strings.TrimRight(sourceRoot, "/"),
+		Target:      strings.TrimRight(target, "/"),
+		Epoch:       epoch,
+		Exclude:     excl,
+		Jobs:        jobs,
+		IsRoot:      isRoot,
+		Deduplicate: dedup,
 	}
 }
 
@@ -229,7 +231,10 @@ func (c *Copier) copyRegular(rel, src, dst string, fi os.FileInfo) (dpkg.Entry, 
 		return dpkg.Entry{}, fmt.Errorf("stamp mtime %s: %w", dst, err)
 	}
 
-	fp := reproducible.XattrFingerprint(dst)
+	fp := ""
+	if c.Deduplicate {
+		fp = reproducible.XattrFingerprint(dst)
+	}
 
 	return dpkg.Entry{
 		Pkg:     fi.Name(),

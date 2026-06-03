@@ -6,7 +6,9 @@ package resolver
 import (
 	"fmt"
 	"os/exec"
+	"sort"
 	"strings"
+	"sync"
 
 	"github.com/michealch/apt2distroless/internal/dpkg"
 )
@@ -28,31 +30,69 @@ type AptCache struct {
 
 // Closure runs apt-cache depends --recurse for each root, unions the resulting
 // package names, and intersects with the installed set. Returns sorted names.
+// Multi-root resolution runs in parallel.
 func (a *AptCache) Closure(roots []string) ([]string, error) {
-	seen := make(map[string]struct{})
-
-	for _, root := range roots {
-		pkgs, err := a.closureForRoot(root)
-		if err != nil {
-			return nil, fmt.Errorf("resolver: %w", err)
-		}
-		for _, p := range pkgs {
-			seen[p] = struct{}{}
-		}
-		// Root always included
-		seen[root] = struct{}{}
+	if len(roots) == 1 {
+		return a.singleRootClosure(roots[0])
 	}
 
-	// Intersect with installed; warn and drop anything not installed.
+	type result struct {
+		name string
+		pkgs []string
+		err  error
+	}
+
+	ch := make(chan result, len(roots))
+	var wg sync.WaitGroup
+	for _, root := range roots {
+		wg.Add(1)
+		go func(r string) {
+			defer wg.Done()
+			pkgs, err := a.closureForRoot(r)
+			ch <- result{name: r, pkgs: pkgs, err: err}
+		}(root)
+	}
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+
+	seen := make(map[string]struct{})
+	for res := range ch {
+		if res.err != nil {
+			return nil, fmt.Errorf("resolver: %w", res.err)
+		}
+		for _, p := range res.pkgs {
+			seen[p] = struct{}{}
+		}
+		seen[res.name] = struct{}{}
+	}
+
+	return a.intersectInstalled(seen), nil
+}
+
+func (a *AptCache) singleRootClosure(root string) ([]string, error) {
+	pkgs, err := a.closureForRoot(root)
+	if err != nil {
+		return nil, fmt.Errorf("resolver: %w", err)
+	}
+	seen := make(map[string]struct{})
+	for _, p := range pkgs {
+		seen[p] = struct{}{}
+	}
+	seen[root] = struct{}{}
+	return a.intersectInstalled(seen), nil
+}
+
+func (a *AptCache) intersectInstalled(seen map[string]struct{}) []string {
 	out := make([]string, 0, len(seen))
 	for name := range seen {
 		if a.Index == nil || a.Index.Installed(name) {
 			out = append(out, name)
 		}
-		// packages not installed are silently dropped (they were optional/elsewhere satisfied)
 	}
 	sortStrings(out)
-	return out, nil
+	return out
 }
 
 func (a *AptCache) closureForRoot(root string) ([]string, error) {
@@ -155,10 +195,4 @@ func (f *FakeResolver) Closure(_ []string) ([]string, error) {
 	return out, nil
 }
 
-func sortStrings(ss []string) {
-	for i := 1; i < len(ss); i++ {
-		for j := i; j > 0 && ss[j] < ss[j-1]; j-- {
-			ss[j], ss[j-1] = ss[j-1], ss[j]
-		}
-	}
-}
+func sortStrings(ss []string) { sort.Strings(ss) }

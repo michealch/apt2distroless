@@ -62,7 +62,8 @@ type cdxDep struct {
 }
 
 // WriteCycloneDX emits a CycloneDX 1.5 JSON BOM for the run result.
-func WriteCycloneDX(path string, r *manifest.RunResult, d Distro, epoch int64) error {
+// licenses maps package name → SPDX license ID (pre-computed once by the caller).
+func WriteCycloneDX(path string, r *manifest.RunResult, d Distro, epoch int64, licenses map[string]string) error {
 	timestamp := time.Unix(epoch, 0).UTC().Format(time.RFC3339)
 
 	bomRef := func(name string) string {
@@ -81,8 +82,11 @@ func WriteCycloneDX(path string, r *manifest.RunResult, d Distro, epoch int64) e
 		if p.Maintainer != "" {
 			c.Supplier = &cdxOrg{Name: p.Maintainer}
 		}
-		lic := LicenseOf(&p, "")
-		if lic != "NOASSERTION" && lic != "" {
+		lic := ""
+		if licenses != nil {
+			lic = licenses[p.Name]
+		}
+		if lic != "" && lic != "NOASSERTION" {
 			c.Licenses = []cdxLic{{License: cdxLicID{ID: lic}}}
 		}
 		comps[i] = c

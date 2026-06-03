@@ -51,6 +51,7 @@ type RunResult struct {
 	TotalFilesCopied   int
 	TotalBytes         int64
 	StartedAt          time.Time
+	Licenses           map[string]string // package name → SPDX license ID, pre-computed once
 }
 
 // Append adds one JSONL record for this run to path (outside the rootfs).

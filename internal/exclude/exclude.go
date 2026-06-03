@@ -4,6 +4,7 @@
 package exclude
 
 import (
+	"sort"
 	"strings"
 
 	"github.com/michealch/apt2distroless/internal/config"
@@ -92,11 +93,6 @@ func dedupSorted(ss []string) []string {
 			out = append(out, s)
 		}
 	}
-	// insertion sort
-	for i := 1; i < len(out); i++ {
-		for j := i; j > 0 && out[j] < out[j-1]; j-- {
-			out[j], out[j-1] = out[j-1], out[j]
-		}
-	}
+	sort.Strings(out)
 	return out
 }
