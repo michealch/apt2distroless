@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/michealch/apt2distroless/compare/v0.1.2...v0.1.3) (2026-06-03)
+
+
+### Bug Fixes
+
+* read package licenses from --source-root ([#7](https://github.com/michealch/apt2distroless/issues/7)) ([ff0124b](https://github.com/michealch/apt2distroless/commit/ff0124b8c297c826c086dde33df3a3f6544f8d85))
+
 ## [0.1.2](https://github.com/michealch/apt2distroless/compare/v0.1.1...v0.1.2) (2026-06-03)
 
 
