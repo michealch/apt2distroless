@@ -55,7 +55,8 @@ type spdxRel struct {
 }
 
 // WriteSPDX emits an SPDX 2.3 JSON document for the run result.
-func WriteSPDX(path string, r *manifest.RunResult, d Distro, epoch int64) error {
+// licenses maps package name → SPDX license ID (pre-computed once by the caller).
+func WriteSPDX(path string, r *manifest.RunResult, d Distro, epoch int64, licenses map[string]string) error {
 	created := time.Unix(epoch, 0).UTC().Format(time.RFC3339)
 
 	// Build stable SPDX ID per package: "SPDXRef-<name>".
@@ -65,7 +66,13 @@ func WriteSPDX(path string, r *manifest.RunResult, d Distro, epoch int64) error 
 
 	pkgs := make([]spdxPkg, len(r.Packages))
 	for i, p := range r.Packages {
-		lic := LicenseOf(&p, "")
+		lic := ""
+		if licenses != nil {
+			lic = licenses[p.Name]
+		}
+		if lic == "" {
+			lic = "NOASSERTION"
+		}
 		supplier := ""
 		if p.Maintainer != "" {
 			supplier = "Organization: " + p.Maintainer

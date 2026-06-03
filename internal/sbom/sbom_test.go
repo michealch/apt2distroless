@@ -30,7 +30,7 @@ var testDistro = Distro{ID: "debian", VersionCode: "bookworm"}
 
 func TestWriteSPDX(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sbom.spdx.json")
-	if err := WriteSPDX(path, testResult, testDistro, 0); err != nil {
+	if err := WriteSPDX(path, testResult, testDistro, 0, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -56,7 +56,7 @@ func TestWriteSPDX(t *testing.T) {
 
 func TestWriteCycloneDX(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "sbom.cdx.json")
-	if err := WriteCycloneDX(path, testResult, testDistro, 0); err != nil {
+	if err := WriteCycloneDX(path, testResult, testDistro, 0, nil); err != nil {
 		t.Fatal(err)
 	}
 
@@ -120,10 +120,10 @@ func TestSPDXDeterministic(t *testing.T) {
 	p1 := filepath.Join(dir, "a.spdx.json")
 	p2 := filepath.Join(dir, "b.spdx.json")
 
-	if err := WriteSPDX(p1, testResult, testDistro, 12345); err != nil {
+	if err := WriteSPDX(p1, testResult, testDistro, 12345, nil); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteSPDX(p2, testResult, testDistro, 12345); err != nil {
+	if err := WriteSPDX(p2, testResult, testDistro, 12345, nil); err != nil {
 		t.Fatal(err)
 	}
 

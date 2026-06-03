@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"sync"
 
 	"github.com/michealch/apt2distroless/internal/blacklist"
 	"github.com/michealch/apt2distroless/internal/config"
@@ -162,7 +163,7 @@ func Pipeline(cfg *config.Config, logger *log.Logger, deps Deps) int {
 	logger.Info("%d packages to copy, %d blacklisted", len(toCopy), len(blacklisted))
 
 	// --- Phase A: parallel copy + metadata ---
-	cp := copier.New(cfg.SourceRoot, cfg.Target, cfg.SourceDateEpoch, excl, cfg.Jobs)
+	cp := copier.New(cfg.SourceRoot, cfg.Target, cfg.SourceDateEpoch, excl, cfg.Jobs, cfg.Deduplicate && cfg.DedupStrategy != "none")
 	if !cp.IsRoot {
 		logger.Warn("not running as root: file ownership and xattrs will not be preserved")
 	}
@@ -170,11 +171,34 @@ func Pipeline(cfg *config.Config, logger *log.Logger, deps Deps) int {
 	lister := listerFor(cfg, deps)
 	results := cp.CopyPackages(toCopy, lister)
 
-	// Emit metadata (status.d + copyright) — also in Phase A.
-	for _, p := range toCopy {
-		if err := metadata.Emit(cfg.Target, p, cfg.SourceRoot); err != nil {
-			logger.Warn("metadata emit %s: %v", p.Name, err)
+	// Emit metadata (status.d + copyright) — also in Phase A, parallelized.
+	{
+		type metaWork struct {
+			idx int
+			p   *dpkg.Package
 		}
+		metaJobs := cfg.Jobs
+		if metaJobs < 1 {
+			metaJobs = 1
+		}
+		metaCh := make(chan metaWork, len(toCopy))
+		var metaWg sync.WaitGroup
+		for i := 0; i < metaJobs; i++ {
+			metaWg.Add(1)
+			go func() {
+				defer metaWg.Done()
+				for w := range metaCh {
+					if err := metadata.Emit(cfg.Target, w.p, cfg.SourceRoot); err != nil {
+						logger.Warn("metadata emit %s: %v", w.p.Name, err)
+					}
+				}
+			}()
+		}
+		for i, p := range toCopy {
+			metaCh <- metaWork{idx: i, p: p}
+		}
+		close(metaCh)
+		metaWg.Wait()
 	}
 
 	// Aggregate results.
@@ -210,12 +234,6 @@ func Pipeline(cfg *config.Config, logger *log.Logger, deps Deps) int {
 		}
 	}
 
-	// --- Dangling symlink check ---
-	dangling := copier.CheckDanglingSymlinks(cfg.Target)
-	for _, d := range dangling {
-		logger.Warn("dangling symlink: %s", d)
-	}
-
 	// --- Broken-edge warning ---
 	copiedNames := make([]string, len(toCopy))
 	for i, p := range toCopy {
@@ -226,7 +244,17 @@ func Pipeline(cfg *config.Config, logger *log.Logger, deps Deps) int {
 		logger.Warn("broken dependency: %s depends on blacklisted/excluded %s; may not function", e.From, e.To)
 	}
 
+	// --- Dangling symlink check (run concurrently with Phase C below) ---
+	var dangWg sync.WaitGroup
+	var dangling []string
+	dangWg.Add(1)
+	go func() {
+		defer dangWg.Done()
+		dangling = copier.CheckDanglingSymlinks(cfg.Target)
+	}()
+
 	// --- Phase C: emit manifest, summary, SBOM ---
+
 	copiedPkgs := make([]dpkg.Package, len(toCopy))
 	for i, p := range toCopy {
 		copiedPkgs[i] = *p
@@ -241,6 +269,15 @@ func Pipeline(cfg *config.Config, logger *log.Logger, deps Deps) int {
 		logger.Info("closure built against %s — your final image base MUST be the same Debian release", distro.Label())
 	}
 
+	// Wait for concurrent dangling symlink check (started above).
+	dangWg.Wait()
+
+	// Pre-compute licenses once for SBOM output.
+	licenses := make(map[string]string, len(toCopy))
+	for _, p := range toCopy {
+		licenses[p.Name] = sbom.LicenseOf(p, cfg.SourceRoot)
+	}
+
 	runResult := &manifest.RunResult{
 		Roots:              cfg.Roots,
 		Arch:               targetArch,
@@ -251,6 +288,7 @@ func Pipeline(cfg *config.Config, logger *log.Logger, deps Deps) int {
 		DanglingSymlinks:   dangling,
 		TotalFilesCopied:   totalFiles,
 		TotalBytes:         totalBytes,
+		Licenses:           licenses,
 	}
 
 	if err := manifest.Append(cfg.ManifestPath, runResult); err != nil {
@@ -266,18 +304,22 @@ func Pipeline(cfg *config.Config, logger *log.Logger, deps Deps) int {
 	}
 
 	if cfg.SBOMSpdx != "" {
-		if err := sbom.WriteSPDX(cfg.SBOMSpdx, runResult, distro, cfg.SourceDateEpoch); err != nil {
+		if err := sbom.WriteSPDX(cfg.SBOMSpdx, runResult, distro, cfg.SourceDateEpoch, licenses); err != nil {
 			logger.Warn("SPDX: %v", err)
 		} else {
 			logger.Info("SPDX SBOM written: %s", cfg.SBOMSpdx)
 		}
 	}
 	if cfg.SBOMCycloneDX != "" {
-		if err := sbom.WriteCycloneDX(cfg.SBOMCycloneDX, runResult, distro, cfg.SourceDateEpoch); err != nil {
+		if err := sbom.WriteCycloneDX(cfg.SBOMCycloneDX, runResult, distro, cfg.SourceDateEpoch, licenses); err != nil {
 			logger.Warn("CycloneDX: %v", err)
 		} else {
 			logger.Info("CycloneDX SBOM written: %s", cfg.SBOMCycloneDX)
 		}
+	}
+
+	for _, d := range dangling {
+		logger.Warn("dangling symlink: %s", d)
 	}
 
 	// --- Phase D: directory mtime fixup (bottom-up) ---
