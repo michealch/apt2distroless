@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.2](https://github.com/michealch/apt2distroless/compare/v0.1.1...v0.1.2) (2026-06-03)
+
+
+### Features
+
+* **docs:** ghcr instead of dockerhub ([#5](https://github.com/michealch/apt2distroless/issues/5)) ([ff23c5e](https://github.com/michealch/apt2distroless/commit/ff23c5e772bf2c3482f23aaa7593d77e71d0ddfc))
+
 ## [0.1.1](https://github.com/michealch/apt2distroless/compare/v0.1.0...v0.1.1) (2026-06-03)
 
 
