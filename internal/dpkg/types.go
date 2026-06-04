@@ -54,6 +54,7 @@ type Entry struct {
 	Size     int64
 	LinkText string // verbatim link destination for KindSymlink
 	XattrFP  string // fingerprint of security.*/user.* xattrs (KindRegular)
+	SHA256   string // hex content digest; set by the copier when dedup is enabled
 }
 
 // FileError records a per-file copy failure.

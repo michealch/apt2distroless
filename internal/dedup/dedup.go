@@ -36,64 +36,27 @@ func (d *Deduper) Run(entries []dpkg.Entry) (linked int, warnings []string, err 
 		}
 	}
 
-	// Phase B1: bucket by size (prefilter).
-	bySize := make(map[int64][]dpkg.Entry)
+	// Content hashes are normally precomputed by the copier (hash-on-copy), so
+	// no file is re-read here. Hash any entry that lacks a digest (direct
+	// callers / tests) in parallel as a fallback.
+	hashes := make(map[string]string, len(regs)) // Dst → sha256
+	var missing []dpkg.Entry
 	for _, e := range regs {
-		bySize[e.Size] = append(bySize[e.Size], e)
-	}
-
-	// Gather size-collision groups (>1 entry per size).
-	type group struct {
-		size    int64
-		entries []dpkg.Entry
-	}
-	var collisions []group
-	for sz, es := range bySize {
-		if len(es) > 1 {
-			collisions = append(collisions, group{size: sz, entries: es})
+		if e.SHA256 != "" {
+			hashes[e.Dst] = e.SHA256
+		} else {
+			missing = append(missing, e)
 		}
 	}
-	if len(collisions) == 0 {
-		return 0, nil, nil
-	}
-
-	// Phase B2: hash each file in each collision group in parallel.
-	type hashResult struct {
-		entry dpkg.Entry
-		hash  string
-		err   error
-	}
-
-	jobs := d.Jobs
-	if jobs < 1 {
-		jobs = 1
-	}
-
-	workCh := make(chan dpkg.Entry)
-	resCh := make(chan hashResult)
-	var wg sync.WaitGroup
-	for i := 0; i < jobs; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for e := range workCh {
-				h, herr := hashFile(e.Dst)
-				resCh <- hashResult{entry: e, hash: h, err: herr}
-			}
-		}()
-	}
-	go func() {
-		for _, g := range collisions {
-			for _, e := range g.entries {
-				workCh <- e
-			}
+	if len(missing) > 0 {
+		hashed, warns := d.hashAll(missing)
+		warnings = append(warnings, warns...)
+		for dst, h := range hashed {
+			hashes[dst] = h
 		}
-		close(workCh)
-		wg.Wait()
-		close(resCh)
-	}()
+	}
 
-	// Collect hashes.
+	// Group by the full dedup key (content digest + ownership/mode/xattr metadata).
 	type dedupKey struct {
 		sha256  string
 		mode    os.FileMode
@@ -102,19 +65,13 @@ func (d *Deduper) Run(entries []dpkg.Entry) (linked int, warnings []string, err 
 		xattrFP string
 	}
 	byKey := make(map[dedupKey][]dpkg.Entry)
-	for r := range resCh {
-		if r.err != nil {
-			warnings = append(warnings, fmt.Sprintf("dedup hash %s: %v", r.entry.Dst, r.err))
-			continue
+	for _, e := range regs {
+		sum, ok := hashes[e.Dst]
+		if !ok {
+			continue // hashing failed; warning already recorded
 		}
-		k := dedupKey{
-			sha256:  r.hash,
-			mode:    r.entry.Mode,
-			uid:     r.entry.Uid,
-			gid:     r.entry.Gid,
-			xattrFP: r.entry.XattrFP,
-		}
-		byKey[k] = append(byKey[k], r.entry)
+		k := dedupKey{sha256: sum, mode: e.Mode, uid: e.Uid, gid: e.Gid, xattrFP: e.XattrFP}
+		byKey[k] = append(byKey[k], e)
 	}
 
 	// Phase B3: for each key group >1, sort by Dst and hardlink non-winners to winner.
@@ -133,6 +90,52 @@ func (d *Deduper) Run(entries []dpkg.Entry) (linked int, warnings []string, err 
 		}
 	}
 	return linked, warnings, nil
+}
+
+// hashAll hashes the given entries' Dst files in parallel (Jobs workers),
+// returning a Dst→sha256 map plus any read warnings. Only used as a fallback
+// for entries whose hash the copier did not precompute.
+func (d *Deduper) hashAll(entries []dpkg.Entry) (map[string]string, []string) {
+	jobs := d.Jobs
+	if jobs < 1 {
+		jobs = 1
+	}
+	type res struct {
+		dst, hash string
+		err       error
+	}
+	workCh := make(chan dpkg.Entry)
+	resCh := make(chan res)
+	var wg sync.WaitGroup
+	for i := 0; i < jobs; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for e := range workCh {
+				h, herr := hashFile(e.Dst)
+				resCh <- res{dst: e.Dst, hash: h, err: herr}
+			}
+		}()
+	}
+	go func() {
+		for _, e := range entries {
+			workCh <- e
+		}
+		close(workCh)
+		wg.Wait()
+		close(resCh)
+	}()
+
+	out := make(map[string]string, len(entries))
+	var warnings []string
+	for r := range resCh {
+		if r.err != nil {
+			warnings = append(warnings, fmt.Sprintf("dedup hash %s: %v", r.dst, r.err))
+			continue
+		}
+		out[r.dst] = r.hash
+	}
+	return out, warnings
 }
 
 // hardlink replaces dst with a hard link to src.
