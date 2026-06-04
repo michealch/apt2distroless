@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/michealch/apt2distroless/compare/v0.1.3...v0.1.4) (2026-06-04)
+
+
+### Performance Improvements
+
+* **copier:** hash while copying and use copy_file_range ([#9](https://github.com/michealch/apt2distroless/issues/9)) ([d46572b](https://github.com/michealch/apt2distroless/commit/d46572b46af90610cbb4758bf9e2aec6ff21b827))
+
 ## [0.1.3](https://github.com/michealch/apt2distroless/compare/v0.1.2...v0.1.3) (2026-06-03)
 
 
