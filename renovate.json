@@ -29,7 +29,9 @@
     {
       "customType": "regex",
       "description": "Track the pinned Go toolchain (ARG GO_VERSION) in the Dockerfile",
-      "fileMatch": ["(^|/)Dockerfile$"],
+      "managerFilePatterns": [
+        "/(^|/)Dockerfile$/"
+      ],
       "matchStrings": ["ARG GO_VERSION=(?<currentValue>\\d+\\.\\d+\\.\\d+)"],
       "datasourceTemplate": "golang-version",
       "depNameTemplate": "golang"
@@ -37,7 +39,9 @@
     {
       "customType": "regex",
       "description": "Track the pinned golangci-lint (ARG LINT_VERSION) in the Dockerfile",
-      "fileMatch": ["(^|/)Dockerfile$"],
+      "managerFilePatterns": [
+        "/(^|/)Dockerfile$/"
+      ],
       "matchStrings": ["ARG LINT_VERSION=(?<currentValue>v\\d+\\.\\d+\\.\\d+)"],
       "datasourceTemplate": "github-releases",
       "depNameTemplate": "golangci/golangci-lint"
