@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/michealch/apt2distroless/compare/v0.1.4...v0.1.5) (2026-06-13)
+
+
+### Bug Fixes
+
+* **deps:** update go modules (non-major) to v0.46.0 ([#11](https://github.com/michealch/apt2distroless/issues/11)) ([e122020](https://github.com/michealch/apt2distroless/commit/e122020aa0ed938713810ca2348d4fa334575a67))
+
 ## [0.1.4](https://github.com/michealch/apt2distroless/compare/v0.1.3...v0.1.4) (2026-06-04)
 
 
