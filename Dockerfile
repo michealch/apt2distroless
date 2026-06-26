@@ -47,7 +47,7 @@ RUN mkdir -p /go/pkg/mod /go/bin && chmod -R 777 /go
 RUN go install github.com/go-delve/delve/cmd/dlv@latest
 
 # Install golangci-lint — pinned version for reproducible linting.
-ARG LINT_VERSION=v2.11.4
+ARG LINT_VERSION=v2.12.2
 RUN curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh \
         | sh -s -- -b /usr/local/bin "${LINT_VERSION}"
 
