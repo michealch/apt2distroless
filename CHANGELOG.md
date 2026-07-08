@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/michealch/apt2distroless/compare/v0.1.5...v0.1.6) (2026-07-08)
+
+
+### Bug Fixes
+
+* **deps:** update module golang.org/x/sys to v0.47.0 ([#16](https://github.com/michealch/apt2distroless/issues/16)) ([c1d91e4](https://github.com/michealch/apt2distroless/commit/c1d91e443fa0ccc6176370ffb527b3b4988de3fe))
+
 ## [0.1.5](https://github.com/michealch/apt2distroless/compare/v0.1.4...v0.1.5) (2026-06-13)
 
 
